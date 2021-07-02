@@ -94,16 +94,9 @@ sigCI = .05 # set "alpha" for "significance" tests (also divided by 2)
 			(lo>0)|(hi<0) ~ T
 			, T ~ F
 		)
+		, .keep = 'unused'
 	)
-	%>% group_by(
-		lat
-		, long
-	)
-	%>% summarise(
-		diff_sig = any(diff_sig)
-		, .groups = 'drop'
-	)
-	%>% right_join(to_plot,by=c('lat','long'))
+	%>% right_join(to_plot,by=c('lat','long','epoch'))
 	%>% select(-samples)
 	%>% group_by(
 		lat
@@ -116,13 +109,6 @@ sigCI = .05 # set "alpha" for "significance" tests (also divided by 2)
 			| (lo[accuracy=='Low']>hi[accuracy=='High']) ~ T
 			, T ~ F
 		)
-	)
-	%>% group_by(
-		lat
-		, long
-	)
-	%>% mutate(
-		indiv_sig = any(indiv_sig)
 	)
 ) -> to_plot
 
@@ -219,13 +205,22 @@ axis_title_dat = tibble(
 	#create a rect around each subpanel
 	+ geom_rect(
 		#use the data from the pipe (.) and use group_keys to reduce to info on the subpanels
-		data = . %>% group_keys(lat,long,x_scaled,y_scaled,diff_sig,indiv_sig)
+		data = (
+			.
+			%>% group_keys(lat,long,x_scaled,y_scaled,epoch,diff_sig,indiv_sig)
+			%>% mutate(
+				x_scaled = case_when(
+					epoch=='during' ~ x_scaled-.25
+					, T ~ x_scaled+.25
+				)
+			)
+		)
 		, aes(
-			xmin = x_scaled-.5
-			, xmax = x_scaled+.5
+			xmin = x_scaled-.25
+			, xmax = x_scaled+.25
 			, ymin = y_scaled-.5
 			, ymax = y_scaled+.5
-			, group = interaction(lat,long)
+			, group = interaction(lat,long,epoch)
 			, fill = if (approach==1) indiv_sig else diff_sig
 		)
 		# , fill = 'grey90'
