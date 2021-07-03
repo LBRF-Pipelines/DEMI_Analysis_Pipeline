@@ -15,8 +15,8 @@ scale_to_0range = function(x,range=1){
 }
 
 (
-	'_Scripts/_rds/all_dat.rds'
-	# '_Scripts/_rds/all_dat_first_participant.rds'
+	# '_Scripts/_rds/all_dat.rds'
+	#'_Scripts/_rds/tmp_mike.rds'
 	%>% readRDS()
 	%>% as_tibble()
 	%>% dplyr::filter(
@@ -62,7 +62,7 @@ scale_to_0range = function(x,range=1){
 #for each participant, compute mean across trials
 (
 	dat
-	%>% group_by(group,participant,x,y,time,freq)
+	%>% group_by(group,participant,chan,x,y,time,freq)
 	%>% summarize(
 		powerdb = mean(powerdb)
 		, .groups = 'drop'
@@ -72,7 +72,7 @@ scale_to_0range = function(x,range=1){
 #for each group, compute mean across participants and append as 0th participant
 (
 	dat
-	%>% group_by(group,x,y,time,freq)
+	%>% group_by(group,chan,x,y,time,freq)
 	%>% summarize(
 		powerdb = mean(powerdb)
 		, .groups = 'drop'
@@ -81,7 +81,7 @@ scale_to_0range = function(x,range=1){
 	%>% dplyr::bind_rows(
 		(
 			dat
-			%>% select(group,participant,x,y,time,freq,powerdb)
+			%>% select(group,participant,chan,x,y,time,freq,powerdb)
 		)
 	)
 	%>% mutate(participant=as.numeric(participant))
@@ -179,7 +179,6 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 	# 	dat
 	# 	%>% filter(
 	# 		participant==participant[1]
-	# 		, participant==0
 	# 		# , chan==chan[1]
 	# 	)
 	# ) -> this_participant_data
@@ -245,6 +244,204 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 		)
 	) -> p
 
+	#add channel labels
+	(
+		p
+		+ geom_text(
+			data = (
+				this_participant_data
+				%>% group_keys(chan,x_scaled,y_scaled)
+			)
+			, mapping = aes(
+				x = x_scaled-.5
+				, y = y_scaled+.5
+				, label = chan
+			)
+			, colour = 'grey70'
+			, size = 2
+			, hjust = 'right'
+			, vjust = 'top'
+		)
+	) ->
+		p
+
+
+	#add panel legend
+
+	#x-axis ticks are located at the locations where all are NA
+	(
+		this_participant_data
+		%>% group_by(
+			time
+		)
+		%>% filter(
+			all(is.na(powerdb))
+		)
+		%>% pull(time_scaled)
+		%>% unique()
+		%>% sort()
+	) -> x_tick_locs
+
+
+	#y-axis labels are located BETWEEN the locations where all are NA
+	(
+		this_participant_data
+		%>% group_by(
+			freq
+		)
+		%>% filter(
+			all(is.na(powerdb))
+		)
+		%>% pull(freq_scaled)
+		%>% unique()
+		%>% sort()
+	) -> y_tick_locs
+	y_tick_locs = c(-.5,y_tick_locs,.5)
+	y_label_locs = (
+		y_tick_locs[1:(length(y_tick_locs)-1)]
+		+ diff(y_tick_locs)/2
+	)
+
+
+	y_axis_y_offset = -3.85
+	y_axis_x_offset = -3.85
+	y_axis_dat_ticks = tibble(
+		y_scaled = y_tick_locs
+		, to_plot_y = y_scaled + y_axis_y_offset
+		, to_plot_x = rep(0,length(y_scaled)) + y_axis_x_offset
+		, label = 1:length(y_scaled)
+	)
+	y_axis_dat_labels = tibble(
+		label = c('δ','θ','α','β','γ')
+		, y_scaled = y_label_locs
+		, to_plot_y = y_scaled + y_axis_y_offset
+		, to_plot_x = rep(0,length(y_scaled)) + y_axis_x_offset
+	)
+
+	x_axis_y_offset = y_axis_y_offset-.5
+	x_axis_x_offset = y_axis_x_offset+.5
+	x_axis_dat = tibble(
+		label = c('','D','A','')
+		, x_scaled = c(-.5,x_tick_locs,.5)
+		, to_plot_x = x_scaled + x_axis_x_offset
+		, to_plot_y = rep(0,length(label)) + x_axis_y_offset
+	)
+
+	axis_title_dat = tibble(
+		label = c('Band','Time')
+		, x = c(y_axis_x_offset-.5,x_axis_x_offset)
+		, y = c(y_axis_y_offset,x_axis_y_offset-.3)
+		, angle = c(90,0)
+		, hjust = c('center','center')
+		, vjust = c('bottom','top')
+	)
+
+	(
+		p
+		# y-axis line
+		+ geom_line(
+			data = y_axis_dat_ticks
+			, aes(
+				x = to_plot_x
+				, y = to_plot_y
+			)
+		)
+		# y-axis ticks
+		+ geom_line(
+			data = (
+				y_axis_dat_ticks
+				%>% mutate(
+					xmin = to_plot_x-.1
+					, xmax = to_plot_x
+				)
+				%>% select(-to_plot_x)
+				%>% pivot_longer(
+					cols = c(xmin,xmax)
+					, values_to = 'to_plot_x'
+				)
+			)
+			, aes(
+				x = to_plot_x
+				, y = to_plot_y
+				, group = label
+			)
+		)
+		# y-axis labels
+		+ geom_text(
+			data = y_axis_dat_labels
+			, aes(
+				x = to_plot_x-.1
+				, y = to_plot_y
+				, label = label
+			)
+			, hjust = 'right'
+			, size = 2
+		)
+		# x-axis line
+		+ geom_line(
+			data = x_axis_dat
+			, aes(
+				x = to_plot_x
+				, y = to_plot_y
+			)
+		)
+		# x-axis ticks
+		+ geom_line(
+			data = (
+				x_axis_dat
+				%>% mutate(
+					ymin = to_plot_y-.1
+					, ymax = to_plot_y
+				)
+				%>% select(-to_plot_y)
+				%>% pivot_longer(
+					cols = c(ymin,ymax)
+					, values_to = 'to_plot_y'
+				)
+			)
+			, aes(
+				x = to_plot_x
+				, y = to_plot_y
+				, group = interaction(label,x_scaled)
+			)
+		)
+		#x-axis labels
+		+ geom_text(
+			data = x_axis_dat
+			, aes(
+				x = to_plot_x
+				, y = to_plot_y-.15
+				, label = label
+			)
+			, vjust = 'top'
+			, size = 2
+			, parse = TRUE
+		)
+		# axis titles
+		+ geom_text(
+			data = axis_title_dat
+			, aes(
+				x = x
+				, y = y
+				, label = label
+				, angle = angle
+				, hjust = hjust
+				, vjust = vjust
+			)
+			, size = 3
+		)
+
+		#example panel
+		+ annotation_raster(
+			raster = channel_rasters[[1]]$topo_raster
+			, xmin = y_axis_x_offset
+			, xmax = y_axis_x_offset+1
+			, ymin = y_axis_y_offset-.5
+			, ymax = y_axis_y_offset+.5
+		)
+
+	) ->
+		p
 	#plot
 	print(p)
 	return(NULL)
@@ -288,12 +485,12 @@ plot_group_participants = function(this_group_data,path){
 }
 
 
-(
-	dat
-	%>% group_by(group)
-	%>% group_split()
-	%>% purrr::map(
-		.f = plot_group_participants
-	)
-)
+# (
+# 	dat
+# 	%>% group_by(group)
+# 	%>% group_split()
+# 	%>% purrr::map(
+# 		.f = plot_group_participants
+# 	)
+# )
 
