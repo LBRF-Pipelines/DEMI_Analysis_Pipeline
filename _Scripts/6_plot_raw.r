@@ -15,7 +15,7 @@ scale_to_0range = function(x,range=1){
 }
 
 (
-	# '_Scripts/_rds/all_dat.rds'
+	'_Scripts/_rds/all_dat.rds'
 	#'_Scripts/_rds/tmp_mike.rds'
 	%>% readRDS()
 	%>% as_tibble()
@@ -24,10 +24,23 @@ scale_to_0range = function(x,range=1){
 		, !(chan == 'M1')
 		, !(chan == 'M2')
 	)
-	%>% mutate(
-		time = time + (2 * (epoch - 1))
-	)
+	# %>% mutate(
+	# 	time = time + (2 * (epoch - 1))
+	# )
 ) -> dat
+
+(
+	dat
+	%>% group_keys(chan,lat,long)
+	%>% ungroup()
+	%>% mutate(
+		#polar to cartesian:
+		x = lat*cos(long*(pi/180))
+		, y = lat*sin(long*(pi/180))
+		, x_scaled = scale_to_0range(x,8)
+		, y_scaled = scale_to_0range(y,8.5)
+	)
+) -> chan_locs
 
 #add handedness & flip lefties
 (
@@ -248,13 +261,10 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 	(
 		p
 		+ geom_text(
-			data = (
-				this_participant_data
-				%>% group_keys(chan,x_scaled,y_scaled)
-			)
+			data = chan_locs
 			, mapping = aes(
-				x = x_scaled-.5
-				, y = y_scaled+.5
+				x = x_scaled*1.25 -.5
+				, y = y_scaled*1.175 +.5
 				, label = chan
 			)
 			, colour = 'grey70'
@@ -269,6 +279,7 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 	#add panel legend
 
 	#x-axis ticks are located at the locations where all are NA
+
 	(
 		this_participant_data
 		%>% group_by(
@@ -303,8 +314,8 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 	)
 
 
-	y_axis_y_offset = -3.85
-	y_axis_x_offset = -3.85
+	y_axis_y_offset = -4.5
+	y_axis_x_offset = -5
 	y_axis_dat_ticks = tibble(
 		y_scaled = y_tick_locs
 		, to_plot_y = y_scaled + y_axis_y_offset
@@ -312,7 +323,8 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 		, label = 1:length(y_scaled)
 	)
 	y_axis_dat_labels = tibble(
-		label = c('δ','θ','α','β','γ')
+		label = c('delta','theta','alpha','beta','gamma')
+		# label = c('δ','θ','α','β','γ')
 		, y_scaled = y_label_locs
 		, to_plot_y = y_scaled + y_axis_y_offset
 		, to_plot_x = rep(0,length(y_scaled)) + y_axis_x_offset
@@ -320,17 +332,31 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 
 	x_axis_y_offset = y_axis_y_offset-.5
 	x_axis_x_offset = y_axis_x_offset+.5
-	x_axis_dat = tibble(
-		label = c('','D','A','')
-		, x_scaled = c(-.5,x_tick_locs,.5)
+
+	x_axis_dat_small_ticks = tibble(
+		label = c('0','0')
+		, x_scaled = x_tick_locs[c(1,3)]
 		, to_plot_x = x_scaled + x_axis_x_offset
 		, to_plot_y = rep(0,length(label)) + x_axis_y_offset
 	)
+	x_axis_dat_big_ticks = tibble(
+		x_scaled = c(-.5,x_tick_locs[2],.5)
+		, to_plot_x = x_scaled + x_axis_x_offset
+		, to_plot_y = rep(0,length(x_scaled)) + x_axis_y_offset
+		, label = 1:length(x_scaled)
+	)
+	x_axis_dat_big_labels = tibble(
+		label = c('During','After')
+		, x_scaled = c(-.25,.25)
+		, to_plot_x = x_scaled + x_axis_x_offset
+		, to_plot_y = rep(0,length(label)) + x_axis_y_offset -.05
+	)
+
 
 	axis_title_dat = tibble(
 		label = c('Band','Time')
-		, x = c(y_axis_x_offset-.5,x_axis_x_offset)
-		, y = c(y_axis_y_offset,x_axis_y_offset-.3)
+		, x = c(y_axis_x_offset-.25,x_axis_x_offset)
+		, y = c(y_axis_y_offset,x_axis_y_offset-.4)
 		, angle = c(90,0)
 		, hjust = c('center','center')
 		, vjust = c('bottom','top')
@@ -351,7 +377,7 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 			data = (
 				y_axis_dat_ticks
 				%>% mutate(
-					xmin = to_plot_x-.1
+					xmin = to_plot_x-.05
 					, xmax = to_plot_x
 				)
 				%>% select(-to_plot_x)
@@ -365,6 +391,7 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 				, y = to_plot_y
 				, group = label
 			)
+			, size = .25
 		)
 		# y-axis labels
 		+ geom_text(
@@ -375,20 +402,21 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 				, label = label
 			)
 			, hjust = 'right'
-			, size = 2
+			, size = 1
+			, parse = T
 		)
 		# x-axis line
 		+ geom_line(
-			data = x_axis_dat
+			data = x_axis_dat_big_ticks
 			, aes(
 				x = to_plot_x
 				, y = to_plot_y
 			)
 		)
-		# x-axis ticks
+		# x-axis big ticks
 		+ geom_line(
 			data = (
-				x_axis_dat
+				x_axis_dat_big_ticks
 				%>% mutate(
 					ymin = to_plot_y-.1
 					, ymax = to_plot_y
@@ -404,10 +432,44 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 				, y = to_plot_y
 				, group = interaction(label,x_scaled)
 			)
+			, size = .25
 		)
-		#x-axis labels
+		# x-axis small ticks
+		+ geom_line(
+			data = (
+				x_axis_dat_small_ticks
+				%>% mutate(
+					ymin = to_plot_y-.05
+					, ymax = to_plot_y
+				)
+				%>% select(-to_plot_y)
+				%>% pivot_longer(
+					cols = c(ymin,ymax)
+					, values_to = 'to_plot_y'
+				)
+			)
+			, aes(
+				x = to_plot_x
+				, y = to_plot_y
+				, group = interaction(label,x_scaled)
+			)
+			, size = .25
+		)
+		#x-axis small labels
 		+ geom_text(
-			data = x_axis_dat
+			data = x_axis_dat_small_ticks
+			, aes(
+				x = to_plot_x
+				, y = to_plot_y - .08
+				, label = label
+			)
+			, vjust = 'top'
+			, size = 1
+			#, parse = TRUE
+		)
+		#extra x-axis big labels
+		+ geom_text(
+			data = x_axis_dat_big_labels
 			, aes(
 				x = to_plot_x
 				, y = to_plot_y-.15
@@ -440,8 +502,7 @@ plot_participant = function(this_participant_data,all_participants_powerdb_range
 			, ymax = y_axis_y_offset+.5
 		)
 
-	) ->
-		p
+	) -> p
 	#plot
 	print(p)
 	return(NULL)
